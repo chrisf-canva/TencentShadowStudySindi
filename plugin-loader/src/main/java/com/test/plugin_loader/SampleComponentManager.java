@@ -56,20 +56,20 @@ public class SampleComponentManager extends ComponentManager {
                 "com.tencent.shadow.sindi.contentprovider");
     }
 
-    @Nullable
-    @Override
-    public List<BroadcastInfo> getBroadcastInfoList(@NotNull String s) {
-        List<ComponentManager.BroadcastInfo> broadcastInfos = new ArrayList<>();
-
-        //如果有静态广播需要像下面代码这样注册
-//        if (partKey.equals(Constant.PART_KEY_PLUGIN_MAIN_APP)) {
-//            broadcastInfos.add(
-//                    new ComponentManager.BroadcastInfo(
-//                            "com.tencent.shadow.demo.usecases.receiver.MyReceiver",
-//                            new String[]{"com.tencent.test.action"}
-//                    )
-//            );
-//        }
-        return broadcastInfos;
-    }
+//    @Nullable
+//    @Override
+//    public List<BroadcastInfo> getBroadcastInfoList(@NotNull String s) {
+//        List<ComponentManager.BroadcastInfo> broadcastInfos = new ArrayList<>();
+//
+//        //如果有静态广播需要像下面代码这样注册
+////        if (partKey.equals(Constant.PART_KEY_PLUGIN_MAIN_APP)) {
+////            broadcastInfos.add(
+////                    new ComponentManager.BroadcastInfo(
+////                            "com.tencent.shadow.demo.usecases.receiver.MyReceiver",
+////                            new String[]{"com.tencent.test.action"}
+////                    )
+////            );
+////        }
+//        return broadcastInfos;
+//    }
 }

@@ -13,6 +13,7 @@ import com.tencent.shadow.dynamic.manager.PluginManagerThatUseDynamicLoader;
 import org.json.JSONException;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -91,7 +92,7 @@ public abstract class FastPluginManager extends PluginManagerThatUseDynamicLoade
         for (Future future : futures) {
             future.get();
         }
-        onInstallCompleted(pluginConfig);
+        onInstallCompleted(pluginConfig, new HashMap<>());
         return getInstalledPlugins(1).get(0);
     }
 

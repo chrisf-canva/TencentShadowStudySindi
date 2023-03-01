@@ -1,3 +1,7 @@
+apply plugin: 'com.android.application'
+apply plugin: 'com.tencent.shadow.plugin'
+apply plugin: 'kotlin-android'
+
 buildscript {//这个模块要放在plugins {} 之前
     repositories {
         google()
@@ -5,15 +9,11 @@ buildscript {//这个模块要放在plugins {} 之前
     }
 
     dependencies {
-        classpath 'com.tencent.shadow.core:runtime-debug'
-        classpath 'com.tencent.shadow.core:activity-container-debug'
+        classpath 'com.tencent.shadow.core:runtime'
+        classpath 'com.tencent.shadow.core:activity-container'
         classpath 'com.tencent.shadow.core:gradle-plugin'
-        classpath 'org.javassist:javassist:3.22.0-GA'
+        classpath 'org.javassist:javassist:3.23.0-GA'
     }
-}
-plugins {
-    id 'com.android.application'
-    id 'kotlin-android'
 }
 
 android {
@@ -29,11 +29,22 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    signingConfigs {
+        release {
+            storeFile file(poc_keystore_file)
+            keyAlias poc_keystore_alias
+            storePassword poc_keystore_password
+            keyPassword poc_keystore_password
+        }
+    }
     buildTypes {
+        debug {
+            minifyEnabled false
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
@@ -42,6 +53,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+    aaptOptions {
+        additionalParameters "--package-id", "0x7E", "--allow-reserved-package-id"
     }
 }
 
@@ -54,11 +68,10 @@ dependencies {
 
     //Shadow Transform后业务代码会有一部分实际引用runtime中的类
     //如果不以compileOnly方式依赖，会导致其他Transform或者Proguard找不到这些类
-    compileOnly 'com.tencent.shadow.core:runtime-debug'
+    compileOnly 'com.tencent.shadow.core:runtime'
 }
 
 
-apply plugin: 'com.tencent.shadow.plugin'
 shadow {
     transform {
 //   useHostContext = ['abc']
@@ -74,15 +87,15 @@ shadow {
                         businessName = 'plugin-app'
                         partKey = 'plugin-app'
                         buildTask = ':plugin-app:assembleDebug'
-                        apkName = 'plugin-app-debug.apk'
-                        apkPath = 'plugin-app/build/outputs/apk/debug/plugin-app-debug.apk'
+//                        apkName = 'plugin-app-debug.apk'
+                        apkPath = 'plugin-app/build/outputs/apk/plugin/debug/plugin-app-plugin-debug.apk'
                     }
                     pluginApk2 {
                         businessName = 'plugin-other'
                         partKey = 'plugin-other'
                         buildTask = ':plugin-other:assembleDebug'
-                        apkName = 'plugin-other-debug.apk'
-                        apkPath = 'plugin-other/build/outputs/apk/debug/plugin-other-debug.apk'
+//                        apkName = 'plugin-other-debug.apk'
+                        apkPath = 'plugin-other/build/outputs/apk/plugin/debug/plugin-other-plugin-debug.apk'
                     }
                 }
             }
@@ -95,15 +108,15 @@ shadow {
                         businessName = 'plugin-app'
                         partKey = 'plugin-app'
                         buildTask = ':plugin-app:assembleRelease'
-                        apkName = 'plugin-app-release.apk'
-                        apkPath = 'plugin-app/build/outputs/apk/release/plugin-app-release.apk'
+//                        apkName = 'plugin-app-release.apk'
+                        apkPath = 'plugin-app/build/outputs/apk/plugin/release/plugin-app-plugin-release.apk'
                     }
                     pluginApk2 {
                         businessName = 'plugin-other'
                         partKey = 'plugin-other'
-                        buildTask = ':plugin-other:assembleDebug'
-                        apkName = 'plugin-other-debug.apk'
-                        apkPath = 'plugin-other/build/outputs/apk/debug/plugin-other-debug.apk'
+                        buildTask = ':plugin-other:assembleRelease'
+//                        apkName = 'plugin-other-debug.apk'
+                        apkPath = 'plugin-other/build/outputs/apk/plugin/release/plugin-other-plugin-release.apk'
                     }
                 }
             }

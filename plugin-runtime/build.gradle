@@ -1,7 +1,6 @@
-plugins {
-    id 'com.android.application'
-    id 'kotlin-android'
-}
+apply plugin: 'com.android.application'
+//apply plugin: 'com.tencent.shadow.plugin'
+apply plugin: 'kotlin-android'
 
 android {
     compileSdkVersion 30
@@ -15,11 +14,19 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-
+    signingConfigs {
+        release {
+            storeFile file(poc_keystore_file)
+            keyAlias poc_keystore_alias
+            storePassword poc_keystore_password
+            keyPassword poc_keystore_password
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {

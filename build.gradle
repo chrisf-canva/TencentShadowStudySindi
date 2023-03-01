@@ -1,7 +1,7 @@
 buildscript {
     ext {
-        kotlin_version = "1.4.20"
-        build_gradle_version = '4.0.2'
+        kotlin_version = "1.6.10"
+        build_gradle_version = '7.1.1'
     }
 
     repositories {
@@ -28,15 +28,15 @@ apply from: "buildScripts/gradle/maven.gradle"
 task clean(type: Delete) {//定义任务
     delete rootProject.buildDir
 
-    dependsOn gradle.includedBuild('coding').task(':checks:clean')//添加依赖
-    dependsOn gradle.includedBuild('coding').task(':lint:clean')
+//    dependsOn gradle.includedBuild('coding').task(':checks:clean')//添加依赖
+//    dependsOn gradle.includedBuild('coding').task(':lint:clean')
     dependsOn gradle.includedBuild('coding').task(':code-generator:clean')
     dependsOn gradle.includedBuild('core').task(':gradle-plugin:clean')
     dependsOn gradle.includedBuild('core').task(':common:clean')
     dependsOn gradle.includedBuild('core').task(':loader:clean')
     dependsOn gradle.includedBuild('core').task(':manager:clean')
-    dependsOn gradle.includedBuild('core').task(':runtime:clean')
-    dependsOn gradle.includedBuild('core').task(':activity-container:clean')
+//    dependsOn gradle.includedBuild('core').task(':runtime:clean')
+//    dependsOn gradle.includedBuild('core').task(':activity-container:clean')
     dependsOn gradle.includedBuild('core').task(':transform:clean')
     dependsOn gradle.includedBuild('core').task(':transform-kit:clean')
     dependsOn gradle.includedBuild('dynamic').task(':dynamic-host:clean')
