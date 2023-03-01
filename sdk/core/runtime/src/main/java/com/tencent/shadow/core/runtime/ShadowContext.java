@@ -18,39 +18,30 @@
 
 package com.tencent.shadow.core.runtime;
 
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.view.LayoutInflater;
 
 import com.tencent.shadow.core.runtime.container.GeneratedHostActivityDelegator;
-import com.tencent.shadow.core.runtime.container.HostActivityDelegator;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public class ShadowContext extends SubDirContextThemeWrapper {
     PluginComponentLauncher mPluginComponentLauncher;
     ClassLoader mPluginClassLoader;
     ShadowApplication mShadowApplication;
     Resources mPluginResources;
-    Resources mMixResources;
     LayoutInflater mLayoutInflater;
     ApplicationInfo mApplicationInfo;
     protected String mPartKey;
     private String mBusinessName;
-    final private Map<BroadcastReceiver, BroadcastReceiverWapper> mBroadcastReceivers = new HashMap<>();
 
     public ShadowContext() {
     }
@@ -99,17 +90,7 @@ public class ShadowContext extends SubDirContextThemeWrapper {
 
     @Override
     public Resources getResources() {
-        if (mMixResources == null) {
-            Context baseContext = getBaseContext();
-            Resources hostResources;
-            if (baseContext instanceof HostActivityDelegator) {
-                hostResources = ((HostActivityDelegator) baseContext).superGetResources();
-            } else {
-                hostResources = baseContext.getResources();
-            }
-            mMixResources = new MixResources(hostResources, mPluginResources);
-        }
-        return mMixResources;
+        return mPluginResources;
     }
 
     @Override
@@ -148,9 +129,9 @@ public class ShadowContext extends SubDirContextThemeWrapper {
         /**
          * 启动Activity
          *
-         * @param delegator 发起启动的activity的delegator
-         * @param intent    插件内传来的Intent.
-         * @param callingActivity   调用者
+         * @param delegator       发起启动的activity的delegator
+         * @param intent          插件内传来的Intent.
+         * @param callingActivity 调用者
          * @return <code>true</code>表示该Intent是为了启动插件内Activity的,已经被正确消费了.
          * <code>false</code>表示该Intent不是插件内的Activity.
          */
@@ -250,50 +231,9 @@ public class ShadowContext extends SubDirContextThemeWrapper {
         return mApplicationInfo.packageName;
     }
 
-
     @Override
-    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
-        return super.registerReceiver(wrapBroadcastReceiver(receiver), filter);
-    }
-
-    @Override
-    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
-        return super.registerReceiver(wrapBroadcastReceiver(receiver), filter, flags);
-    }
-
-    @Override
-    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String broadcastPermission, Handler scheduler) {
-        return super.registerReceiver(wrapBroadcastReceiver(receiver), filter, broadcastPermission, scheduler);
-    }
-
-    @Override
-    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, String broadcastPermission, Handler scheduler, int flags) {
-        return super.registerReceiver(wrapBroadcastReceiver(receiver), filter, broadcastPermission, scheduler, flags);
-    }
-
-    @Override
-    public void unregisterReceiver(BroadcastReceiver receiver) {
-        synchronized (mBroadcastReceivers) {
-            BroadcastReceiverWapper broadcastReceiverWapper = mBroadcastReceivers.get(receiver);
-            if (broadcastReceiverWapper != null) {
-                super.unregisterReceiver(broadcastReceiverWapper);
-            } else {
-                super.unregisterReceiver(receiver);
-            }
-        }
-    }
-
-    private BroadcastReceiverWapper wrapBroadcastReceiver(BroadcastReceiver receiver) {
-        if (receiver == null) {
-            return null;
-        }
-        synchronized (mBroadcastReceivers) {
-            BroadcastReceiverWapper broadcastReceiverWapper = mBroadcastReceivers.get(receiver);
-            if (broadcastReceiverWapper == null) {
-                broadcastReceiverWapper = new BroadcastReceiverWapper(receiver, this);
-            }
-            mBroadcastReceivers.put(receiver, broadcastReceiverWapper);
-            return broadcastReceiverWapper;
-        }
+    public String getPackageCodePath() {
+        PluginPartInfo pluginInfo = PluginPartInfoManager.getPluginInfo(getClassLoader());
+        return pluginInfo.packageManager.getArchiveFilePath();
     }
 }

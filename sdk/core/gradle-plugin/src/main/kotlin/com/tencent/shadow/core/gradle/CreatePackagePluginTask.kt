@@ -29,7 +29,7 @@ import java.io.FileWriter
 
 internal fun createPackagePluginTask(project: Project, buildType: PluginBuildType): Task {
     return project.tasks.create("package${buildType.name.capitalize()}Plugin", Zip::class.java) {
-        println("PackagePluginTask task run")
+        project.logger.info("PackagePluginTask task run")
 
         //runtime apk file
         val runtimeApkName: String = buildType.runtimeApkConfig.first
@@ -48,7 +48,8 @@ internal fun createPackagePluginTask(project: Project, buildType: PluginBuildTyp
 
 
         //config file
-        val targetConfigFile = File(project.buildDir.absolutePath + "/intermediates/generatePluginConfig/${buildType.name}/config.json")
+        val targetConfigFile =
+            File(project.buildDir.absolutePath + "/intermediates/generatePluginConfig/${buildType.name}/config.json")
         targetConfigFile.parentFile.mkdirs()
 
 
@@ -80,12 +81,13 @@ internal fun createPackagePluginTask(project: Project, buildType: PluginBuildTyp
         } else {
             it.archiveName = "$prefix-${buildType.name}-$suffix.zip"
         }
-        it.destinationDir = File(if (extension.destinationDir.isEmpty()) "${project.rootDir}/build" else extension.destinationDir)
+        it.destinationDir =
+            File(if (extension.destinationDir.isEmpty()) "${project.rootDir}/build" else extension.destinationDir)
     }.dependsOn(createGenerateConfigTask(project, buildType))
 }
 
 private fun createGenerateConfigTask(project: Project, buildType: PluginBuildType): Task {
-    println("GenerateConfigTask task run")
+    project.logger.info("GenerateConfigTask task run")
     val packagePlugin = project.extensions.findByName("packagePlugin")
     val extension = packagePlugin as PackagePluginExtension
 
@@ -94,7 +96,7 @@ private fun createGenerateConfigTask(project: Project, buildType: PluginBuildTyp
     var runtimeTask = ""
     if (runtimeApkName.isNotEmpty()) {
         runtimeTask = buildType.runtimeApkConfig.second
-        println("runtime task = $runtimeTask")
+        project.logger.info("runtime task = $runtimeTask")
     }
 
 
@@ -103,17 +105,18 @@ private fun createGenerateConfigTask(project: Project, buildType: PluginBuildTyp
     var loaderTask = ""
     if (loaderApkName.isNotEmpty()) {
         loaderTask = buildType.loaderApkConfig.second
-        println("loader task = $loaderTask")
+        project.logger.info("loader task = $loaderTask")
     }
 
 
-    val targetConfigFile = File(project.buildDir.absolutePath + "/intermediates/generatePluginConfig/${buildType.name}/config.json")
+    val targetConfigFile =
+        File(project.buildDir.absolutePath + "/intermediates/generatePluginConfig/${buildType.name}/config.json")
 
 
     val pluginApkTasks: MutableList<String> = mutableListOf()
     for (i in buildType.pluginApks) {
         val task = i.buildTask
-        println("pluginApkProjects task = $task")
+        project.logger.info("pluginApkProjects task = $task")
         pluginApkTasks.add(task)
     }
 
@@ -123,20 +126,20 @@ private fun createGenerateConfigTask(project: Project, buildType: PluginBuildTyp
         it.outputs.file(targetConfigFile)
         it.outputs.upToDateWhen { false }
     }
-            .dependsOn(pluginApkTasks)
-            .doLast {
+        .dependsOn(pluginApkTasks)
+        .doLast {
 
-                println("generateConfig task begin")
-                val json = extension.toJson(project, loaderApkName, runtimeApkName, buildType)
+            project.logger.info("generateConfig task begin")
+            val json = extension.toJson(project, loaderApkName, runtimeApkName, buildType)
 
-                val bizWriter = BufferedWriter(FileWriter(targetConfigFile))
-                bizWriter.write(json.toJSONString())
-                bizWriter.newLine()
-                bizWriter.flush()
-                bizWriter.close()
+            val bizWriter = BufferedWriter(FileWriter(targetConfigFile))
+            bizWriter.write(json.toJSONString())
+            bizWriter.newLine()
+            bizWriter.flush()
+            bizWriter.close()
 
-                println("generateConfig task done")
-            }
+            project.logger.info("generateConfig task done")
+        }
     if (loaderTask.isNotEmpty()) {
         task.dependsOn(loaderTask)
     }

@@ -23,14 +23,13 @@ import javassist.ClassPool
 import javassist.CtClass
 import org.gradle.api.Project
 import java.io.*
-import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.system.measureTimeMillis
 
 abstract class AbstractTransform(
-        project: Project,
-        classPoolBuilder: ClassPoolBuilder
+    project: Project,
+    classPoolBuilder: ClassPoolBuilder
 ) : JavassistTransform(project, classPoolBuilder) {
 
     protected abstract val mTransformManager: AbstractTransformManager
@@ -41,6 +40,7 @@ abstract class AbstractTransform(
 
     private fun cleanDebugClassFileDir() {
         val transformTempDir = File(project.buildDir, "transform-temp")
+        transformTempDir.deleteRecursively()
         transformTempDir.mkdirs()
         mDebugClassJar = File.createTempFile("transform-temp", ".jar", transformTempDir)
         mDebugClassJarZOS = ZipOutputStream(FileOutputStream(mDebugClassJar))
@@ -75,20 +75,14 @@ abstract class AbstractTransform(
         onCheckTransformedClasses(debugClassPool, inputClassNames)
     }
 
-    override fun onOutputClass(className: String, outputStream: OutputStream) {
-        classPool[className].debugWriteJar(mDebugClassJarZOS)
-        super.onOutputClass(className, outputStream)
+    override fun onOutputClass(entryName: String?, className: String, outputStream: OutputStream) {
+        classPool[className].debugWriteJar(entryName, mDebugClassJarZOS)
+        super.onOutputClass(entryName, className, outputStream)
     }
 
-    private fun CtClass.debugWriteJar(outputStream: ZipOutputStream) {
-        //忽略Kotlin 1.4引入的module-info
-        //https://kotlinlang.org/docs/reference/whatsnew14.html#module-info-descriptors-for-stdlib-artifacts
-        if (name == "module-info") {
-            return
-        }
-
+    private fun CtClass.debugWriteJar(outputEntryName: String?, outputStream: ZipOutputStream) {
         try {
-            val entryName = (name.replace('.', '/') + ".class")
+            val entryName = outputEntryName ?: (name.replace('.', '/') + ".class")
             outputStream.putNextEntry(ZipEntry(entryName))
             val p = stopPruning(true)
             toBytecode(DataOutputStream(outputStream))
@@ -137,10 +131,17 @@ abstract class AbstractTransform(
     /**
      * 检查转换后的类，其中被替换了的类有实现被调用的方法
      */
-    private fun checkReplacedClassHaveRightMethods(debugClassPool: ClassPool, classNames: List<String>) {
+    private fun checkReplacedClassHaveRightMethods(
+        debugClassPool: ClassPool,
+        classNames: List<String>
+    ) {
         val result = ReplaceClassName.checkAll(debugClassPool, classNames)
         if (result.isNotEmpty()) {
-            val tempFile = File.createTempFile("shadow_replace_class_have_right_methods", ".txt", project.buildDir)
+            val tempFile = File.createTempFile(
+                "shadow_replace_class_have_right_methods",
+                ".txt",
+                project.buildDir
+            )
             val bw = BufferedWriter(FileWriter(tempFile))
 
             result.forEach {
@@ -171,9 +172,10 @@ abstract class AbstractTransform(
             val bw = BufferedWriter(FileWriter(tempFile))
             result.forEach {
                 bw.appendln("In Class ${it.key} 这些方法不再Override父类了:")
-                it.value.map { "${it.first.name}:${it.first.signature}(转换前定义在${it.second})" }.forEach {
-                    bw.appendln(it)
-                }
+                it.value.map { "${it.first.name}:${it.first.signature}(转换前定义在${it.second})" }
+                    .forEach {
+                        bw.appendln(it)
+                    }
                 bw.newLine()
             }
             bw.flush()

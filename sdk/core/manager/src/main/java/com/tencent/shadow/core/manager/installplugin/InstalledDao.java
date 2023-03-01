@@ -28,13 +28,14 @@ import org.json.JSONException;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public class InstalledDao {
 
-    private InstalledPluginDBHelper mDBHelper;
+    final private InstalledPluginDBHelper mDBHelper;
 
     public InstalledDao(InstalledPluginDBHelper dbHelper) {
         mDBHelper = dbHelper;
@@ -44,12 +45,15 @@ public class InstalledDao {
      * 根据插件配置信息插入一组数据
      *
      * @param pluginConfig 插件配置信息
-     * @param soDir
+     * @param soDirMap     key:type+partKey
      * @param oDexDir
      */
-    public void insert(PluginConfig pluginConfig, String soDir, String oDexDir) {
+    public void insert(PluginConfig pluginConfig, Map<String, String> soDirMap, String oDexDir) {
         SQLiteDatabase db = mDBHelper.getWritableDatabase();
-        List<ContentValues> contentValuesList = parseConfig(pluginConfig, soDir, oDexDir);
+        if (soDirMap == null) {
+            soDirMap = Collections.emptyMap();
+        }
+        List<ContentValues> contentValuesList = parseConfig(pluginConfig, soDirMap, oDexDir);
         db.beginTransaction();
         try {
             for (ContentValues contentValues : contentValuesList) {
@@ -73,7 +77,7 @@ public class InstalledDao {
      * @return 影响的数据行数
      */
     public int deleteByUUID(String UUID) {
-        int row ;
+        int row;
         SQLiteDatabase db = mDBHelper.getWritableDatabase();
         db.beginTransaction();
         try {
@@ -88,15 +92,23 @@ public class InstalledDao {
     /**
      * 根据uuid和APPID获取对应的插件信息
      *
-     * @param UUID  插件的发布id
+     * @param uuid 插件的发布id
      * @return 插件安装数据
      */
     @SuppressLint("Range")
-    public InstalledPlugin getInstalledPluginByUUID(String UUID) {
+    public InstalledPlugin getInstalledPluginByUUID(String uuid) {
         SQLiteDatabase db = mDBHelper.getReadableDatabase();
-        Cursor cursor = db.rawQuery("select * from shadowPluginManager where uuid = ?", new String[]{UUID});
+        Cursor cursor = db.query(
+                InstalledPluginDBHelper.TABLE_NAME_MANAGER,
+                null,
+                InstalledPluginDBHelper.COLUMN_UUID + " = ?",
+                new String[]{uuid},
+                null,
+                null,
+                null
+        );
         InstalledPlugin installedPlugin = new InstalledPlugin();
-        installedPlugin.UUID = UUID;
+        installedPlugin.UUID = uuid;
         while (cursor.moveToNext()) {
             int type = cursor.getInt(cursor.getColumnIndex(InstalledPluginDBHelper.COLUMN_TYPE));
             if (type == InstalledType.TYPE_UUID) {
@@ -152,15 +164,33 @@ public class InstalledDao {
     }
 
     /**
+     * @deprecated 方法名拼写错误
+     */
+    @Deprecated
+    public List<InstalledPlugin> getLastPlugins(int limit) {
+        return getLatestPlugins(limit);
+    }
+
+    /**
      * 获取最近的插件列表数据
      *
      * @param limit 获取的数据数量
      * @return 插件列表数据
      */
-    @SuppressLint("Range")
-    public List<InstalledPlugin> getLastPlugins(int limit) {
+    public List<InstalledPlugin> getLatestPlugins(int limit) {
         SQLiteDatabase db = mDBHelper.getReadableDatabase();
-        Cursor cursor = db.rawQuery("select uuid from shadowPluginManager where  type = ?   order by installedTime desc limit " + limit, new String[]{String.valueOf(InstalledType.TYPE_UUID)});
+        // 查询所有type为uuid的行，按自增ID主键倒序
+        // 即自增ID越大的uuid为最新安装的
+        Cursor cursor = db.query(
+                InstalledPluginDBHelper.TABLE_NAME_MANAGER,
+                new String[]{InstalledPluginDBHelper.COLUMN_UUID},
+                InstalledPluginDBHelper.COLUMN_TYPE + " = ?",
+                new String[]{String.valueOf(InstalledType.TYPE_UUID)},
+                null,
+                null,
+                InstalledPluginDBHelper.COLUMN_ID + " DESC",
+                Integer.toString(limit)
+        );
         List<String> uuids = new ArrayList<>();
         while (cursor.moveToNext()) {
             String uuid = cursor.getString(cursor.getColumnIndex(InstalledPluginDBHelper.COLUMN_UUID));
@@ -171,17 +201,21 @@ public class InstalledDao {
         for (String uuid : uuids) {
             installedPlugins.add(getInstalledPluginByUUID(uuid));
         }
-        db.close();
         return installedPlugins;
     }
 
-    private List<ContentValues> parseConfig(PluginConfig pluginConfig, String soDir, String oDexDir) {
+    private List<ContentValues> parseConfig(PluginConfig pluginConfig,
+                                            Map<String, String> soDirMap,// key:type+partKey
+                                            String oDexDir
+    ) {
         List<InstalledRow> installedRows = new ArrayList<>();
         if (pluginConfig.pluginLoader != null) {
+            String soDir = soDirMap.get(Integer.toString(InstalledType.TYPE_PLUGIN_LOADER) + null);
             installedRows.add(new InstalledRow(pluginConfig.pluginLoader.hash, null, pluginConfig.pluginLoader.file.getAbsolutePath(), InstalledType.TYPE_PLUGIN_LOADER,
                     soDir, oDexDir));
         }
         if (pluginConfig.runTime != null) {
+            String soDir = soDirMap.get(Integer.toString(InstalledType.TYPE_PLUGIN_RUNTIME) + null);
             installedRows.add(new InstalledRow(pluginConfig.runTime.hash, null, pluginConfig.runTime.file.getAbsolutePath(), InstalledType.TYPE_PLUGIN_RUNTIME,
                     soDir, oDexDir));
         }
@@ -189,11 +223,13 @@ public class InstalledDao {
             Set<Map.Entry<String, PluginConfig.PluginFileInfo>> plugins = pluginConfig.plugins.entrySet();
             for (Map.Entry<String, PluginConfig.PluginFileInfo> plugin : plugins) {
                 PluginConfig.PluginFileInfo fileInfo = plugin.getValue();
+                String partKey = plugin.getKey();
+                String soDir = soDirMap.get(InstalledType.TYPE_PLUGIN + partKey);
                 installedRows.add(
                         new InstalledRow(
                                 fileInfo.hash,
                                 fileInfo.businessName,
-                                plugin.getKey(),
+                                partKey,
                                 fileInfo.dependsOn,
                                 fileInfo.file.getAbsolutePath(),
                                 InstalledType.TYPE_PLUGIN,
@@ -218,4 +254,10 @@ public class InstalledDao {
     }
 
 
+    /**
+     * 释放资源
+     */
+    public void close() {
+        mDBHelper.close();
+    }
 }

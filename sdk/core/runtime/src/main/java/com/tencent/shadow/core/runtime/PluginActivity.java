@@ -46,16 +46,18 @@ public abstract class PluginActivity extends GeneratedPluginActivity {
 
     ComponentName mCallingActivity;
 
-    private ShadowActivityLifecycleCallbacks.Holder lifecycleCallbacksHolder;
-
     public void registerActivityLifecycleCallbacks(
             ShadowActivityLifecycleCallbacks callback) {
-        lifecycleCallbacksHolder.registerActivityLifecycleCallbacks(this, callback);
+        mPluginApplication.mActivityLifecycleCallbacksHolder.registerActivityLifecycleCallbacks(
+                callback, this, hostActivityDelegator
+        );
     }
 
     public void unregisterActivityLifecycleCallbacks(
             ShadowActivityLifecycleCallbacks callback) {
-        lifecycleCallbacksHolder.unregisterActivityLifecycleCallbacks(callback);
+        mPluginApplication.mActivityLifecycleCallbacksHolder.unregisterActivityLifecycleCallbacks(
+                callback, this, hostActivityDelegator
+        );
     }
 
     public final void setHostContextAsBase(Context context) {
@@ -65,7 +67,6 @@ public abstract class PluginActivity extends GeneratedPluginActivity {
     public void setHostActivityDelegator(HostActivityDelegator delegator) {
         super.hostActivityDelegator = delegator;
         hostActivityDelegator = delegator;
-        lifecycleCallbacksHolder = new ShadowActivityLifecycleCallbacks.Holder(delegator);
     }
 
     public void setPluginApplication(ShadowApplication pluginApplication) {
@@ -81,8 +82,7 @@ public abstract class PluginActivity extends GeneratedPluginActivity {
     }
 
     public LayoutInflater getLayoutInflater() {
-        LayoutInflater inflater = hostActivityDelegator.getWindow().getLayoutInflater();
-        return ShadowLayoutInflater.build(inflater, this, mPartKey);
+        return LayoutInflater.from(this);
     }
 
     //TODO: 对齐原手工代码，这个方法签名实际上不对，应该传入ShadowActivity
@@ -110,4 +110,13 @@ public abstract class PluginActivity extends GeneratedPluginActivity {
         hostActivityDelegator.setTheme(resid);
     }
 
+    @Override
+    public Object getSystemService(String name) {
+        if (LAYOUT_INFLATER_SERVICE.equals(name)) {
+            return super.getSystemService(name);
+        } else {
+            return hostActivityDelegator.getHostActivity().getImplementActivity()
+                    .getSystemService(name);
+        }
+    }
 }

@@ -19,16 +19,24 @@
 package com.tencent.shadow.core.transform
 
 import com.android.build.api.transform.TransformInvocation
+import com.android.build.api.variant.VariantInfo
 import com.tencent.shadow.core.transform_kit.AbstractTransform
 import com.tencent.shadow.core.transform_kit.AbstractTransformManager
 import com.tencent.shadow.core.transform_kit.ClassPoolBuilder
 import org.gradle.api.Project
 
 class ShadowTransform(
-        project: Project,
-        classPoolBuilder: ClassPoolBuilder,
-        private val useHostContext: () -> Array<String>
+    project: Project,
+    classPoolBuilder: ClassPoolBuilder,
+    private val useHostContext: () -> Array<String>
 ) : AbstractTransform(project, classPoolBuilder) {
+    companion object {
+        const val SelfClassNamePlaceholder =
+            "com.tencent.shadow.core.transform.SelfClassNamePlaceholder"
+        const val DimensionName = "Shadow"
+        const val NoShadowTransformFlavorName = "normal"
+        const val ApplyShadowTransformFlavorName = "plugin"
+    }
 
     lateinit var _mTransformManager: TransformManager
 
@@ -38,7 +46,17 @@ class ShadowTransform(
     override fun beforeTransform(invocation: TransformInvocation) {
         super.beforeTransform(invocation)
         _mTransformManager = TransformManager(mCtClassInputMap, classPool, useHostContext)
+        classPool.makeInterface(SelfClassNamePlaceholder)
+    }
+
+    override fun isCacheable(): Boolean {
+        return true
     }
 
     override fun getName(): String = "ShadowTransform"
+
+    override fun applyToVariant(variant: VariantInfo): Boolean {
+        return if (variant.isTest) false
+        else variant.flavorNames.contains(ApplyShadowTransformFlavorName)
+    }
 }

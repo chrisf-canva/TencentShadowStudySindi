@@ -47,11 +47,13 @@ abstract class ClassTransform(val project: Project) : Transform() {
      * 获取输入文件对应的输出文件路径.即将文件this路径中的inputDir部分替换为outputDir.
      */
     fun File.toOutputFile(inputDir: File, outputDir: File): File {
-        return File(outputDir, FileUtils.relativePossiblyNonExistingPath(this, inputDir))
+        return File(outputDir, this.toRelativeString(inputDir))
     }
 
-    fun input(inputs: Collection<com.android.build.api.transform.TransformInput>,
-              outputProvider: TransformOutputProvider) {
+    fun input(
+        inputs: Collection<com.android.build.api.transform.TransformInput>,
+        outputProvider: TransformOutputProvider
+    ) {
         val logger = project.logger
         if (logger.isInfoEnabled) {
             val sb = StringBuilder()
@@ -78,8 +80,8 @@ abstract class ClassTransform(val project: Project) : Transform() {
                 }.forEach {
                     val inputClass = DirInputClass()
                     inputClass.onInputClass(
-                            it,
-                            it.toOutputFile(inputDir, transformInput.toOutput(outputProvider))
+                        it,
+                        it.toOutputFile(inputDir, transformInput.toOutput(outputProvider))
                     )
                     transformInput.addInputClass(inputClass)
                 }
@@ -88,15 +90,25 @@ abstract class ClassTransform(val project: Project) : Transform() {
             it.jarInputs.forEach {
                 val transformInput = TransformInput(it)
                 inputSet.add(transformInput)
-                ZipInputStream(FileInputStream(it.file)).use {
-                    var entry: ZipEntry? = it.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory && entry.name.endsWith(SdkConstants.DOT_CLASS)) {
-                            val inputClass = JarInputClass()
-                            inputClass.onInputClass(it, entry.name)
-                            transformInput.addInputClass(inputClass)
-                        }
-                        entry = it.nextEntry
+                ZipInputStream(FileInputStream(it.file)).use { zis ->
+                    var entry: ZipEntry?
+                    while (true) {
+                        entry = zis.nextEntry
+                        if (entry == null) break
+
+                        val name = entry.name
+
+                        // 忽略一些实际上不会进入编译classpath的文件
+                        if (entry.isDirectory) continue
+                        if (!name.endsWith(SdkConstants.DOT_CLASS)) continue
+                        if (name.startsWith("META-INF/", true)) continue
+                        if (name.endsWith("module-info.class", true)) continue
+                        if (name.endsWith("package-info.class", true)) continue
+
+                        // 记录好entry和name的关系，添加再添加成transform的输入
+                        val inputClass = JarInputClass()
+                        inputClass.onInputClass(zis, name)
+                        transformInput.addInputClass(inputClass)
                     }
                 }
             }
@@ -114,7 +126,7 @@ abstract class ClassTransform(val project: Project) : Transform() {
                             val file = it.second
                             Files.createParentDirs(file)
                             FileOutputStream(file).use {
-                                onOutputClass(className, it)
+                                onOutputClass(null, className, it)
                             }
                         }
                     }
@@ -129,7 +141,7 @@ abstract class ClassTransform(val project: Project) : Transform() {
                                 val className = it.first
                                 val entryName = it.second
                                 zos.putNextEntry(ZipEntry(entryName))
-                                onOutputClass(className, zos)
+                                onOutputClass(entryName, className, zos)
                             }
                         }
                     }
@@ -138,7 +150,7 @@ abstract class ClassTransform(val project: Project) : Transform() {
         }
     }
 
-    abstract fun onOutputClass(className: String, outputStream: OutputStream)
+    abstract fun onOutputClass(entryName: String?, className: String, outputStream: OutputStream)
 
     abstract fun DirInputClass.onInputClass(classFile: File, outputFile: File)
 
@@ -177,14 +189,15 @@ abstract class ClassTransform(val project: Project) : Transform() {
 
     override fun getSecondaryFiles(): ImmutableList<SecondaryFile>? {
         val transformJar = File(this::class.java.protectionDomain.codeSource.location.toURI())
-        val transformKitJar = File(ClassTransform::class.java.protectionDomain.codeSource.location.toURI())
+        val transformKitJar =
+            File(ClassTransform::class.java.protectionDomain.codeSource.location.toURI())
 
         return ImmutableList.of(
-                //将当前类运行所在的jar本身作为转换输入的SecondaryFiles，也就作为了这个transform task的inputs的
-                //一部分，这使得当这个Transform程序变化时，构建能检测到这个Transform需要重新执行。这是直接编辑这个
-                //Transform源码后，应用了这个Plugin的debug工程能直接生效的关键。
-                SecondaryFile.nonIncremental(project.files(transformJar)),
-                SecondaryFile.nonIncremental(project.files(transformKitJar))
+            //将当前类运行所在的jar本身作为转换输入的SecondaryFiles，也就作为了这个transform task的inputs的
+            //一部分，这使得当这个Transform程序变化时，构建能检测到这个Transform需要重新执行。这是直接编辑这个
+            //Transform源码后，应用了这个Plugin的debug工程能直接生效的关键。
+            SecondaryFile.nonIncremental(project.files(transformJar)),
+            SecondaryFile.nonIncremental(project.files(transformKitJar))
         )
     }
 }
@@ -253,17 +266,17 @@ class JarInputClass() : InputClass() {
 
 
 class TransformInput(
-        val name: String,
-        val contentTypes: Set<ContentType>,
-        val scopes: MutableSet<in Scope>,
-        val format: Format
+    val name: String,
+    val contentTypes: Set<ContentType>,
+    val scopes: MutableSet<in Scope>,
+    val format: Format
 ) {
     constructor(di: DirectoryInput) : this(
-            di.name, di.contentTypes, di.scopes, Format.DIRECTORY
+        di.name, di.contentTypes, di.scopes, Format.DIRECTORY
     )
 
     constructor(ji: JarInput) : this(
-            ji.name, ji.contentTypes, ji.scopes, Format.JAR
+        ji.name, ji.contentTypes, ji.scopes, Format.JAR
     )
 
     private val inputClassSet = mutableSetOf<InputClass>()
@@ -275,10 +288,10 @@ class TransformInput(
     fun getInputClass() = inputClassSet.toSet()
 
     fun toOutput(outputProvider: TransformOutputProvider) =
-            outputProvider.getContentLocation(
-                    name,
-                    contentTypes,
-                    scopes,
-                    format
-            )
+        outputProvider.getContentLocation(
+            name,
+            contentTypes,
+            scopes,
+            format
+        )
 }

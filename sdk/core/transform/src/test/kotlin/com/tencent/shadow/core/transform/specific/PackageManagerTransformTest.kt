@@ -18,6 +18,7 @@
 
 package com.tencent.shadow.core.transform.specific
 
+import com.tencent.shadow.core.transform.ShadowTransform.Companion.SelfClassNamePlaceholder
 import com.tencent.shadow.core.transform_kit.AbstractTransformTest
 import javassist.CtClass
 import javassist.CtMethod
@@ -30,16 +31,24 @@ class PackageManagerTransformTest : AbstractTransformTest() {
 
     @Test
     fun testPackageManagerTransform() {
-        val allInputClass = setOf(sLoader["test.TestPackageManager"], sLoader["test.TestPackageManager$1"], sLoader["test.TestPackageManager$1$1"])
+        val allInputClass = setOf(
+            sLoader["test.TestPackageManager"],
+            sLoader["test.TestPackageManager$1"],
+            sLoader["test.TestPackageManager$1$1"]
+        )
 
         val packageManagerTransform = PackageManagerTransform()
         packageManagerTransform.mClassPool = sLoader
+        packageManagerTransform.mClassPool.makeInterface(SelfClassNamePlaceholder)
         packageManagerTransform.setup(allInputClass)
 
-        val methods = arrayOf("getApplicationInfo","getActivityInfo")
+        val methods = arrayOf("getApplicationInfo", "getActivityInfo")
 
 
         allInputClass.forEach {
+            //将测试类的包名改为Java的非法包名字符，测试Proguard混淆成这种形式的jar的场景
+            it.name = "1.${it.simpleName}"
+
             for (method in methods) {
                 beforeTransformCheck(it, method)
             }
@@ -70,8 +79,9 @@ class PackageManagerTransformTest : AbstractTransformTest() {
     fun beforeTransformCheck(clazz: CtClass, method: String) {
         val getApplicationMethods = packageManagerClazz.getDeclaredMethods(method)
 
-        assertTrue("transform 前应该可以找到PackageManager的" + method + "的调用",
-                findCall(getApplicationMethods, clazz)
+        assertTrue(
+            "transform 前应该可以找到PackageManager的" + method + "的调用",
+            findCall(getApplicationMethods, clazz)
         )
     }
 
@@ -79,19 +89,23 @@ class PackageManagerTransformTest : AbstractTransformTest() {
     fun afterTransformCheck(clazz: CtClass, method: String) {
         val getManagerMethods = packageManagerClazz.getDeclaredMethods(method)
 
-        assertTrue("transform 后应该可以不能找到PackageManager的" + method + "的调用",
-                !findCall(getManagerMethods, clazz)
+        assertTrue(
+            "transform 后应该可以不能找到PackageManager的" + method + "的调用",
+            !findCall(getManagerMethods, clazz)
         )
 
 
-        val methods2: List<CtMethod> = getTargetMethods(sLoader, arrayOf(clazz.name), arrayOf(method + "_shadow"))
+        val methods2: List<CtMethod> =
+            getTargetMethods(sLoader, arrayOf(clazz.name), arrayOf(method + "_shadow"))
 
-        assertTrue(method + "_shadow方法应该能找到,且应该只有一个",
-                methods2.size == 1
+        assertTrue(
+            method + "_shadow方法应该能找到,且应该只有一个",
+            methods2.size == 1
         )
 
-        assertTrue(method + "_shadow方法调用也应该可以找到",
-                findCall(arrayOf(clazz.getDeclaredMethod(method + "_shadow")), clazz)
+        assertTrue(
+            method + "_shadow方法调用也应该可以找到",
+            findCall(arrayOf(clazz.getDeclaredMethod(method + "_shadow")), clazz)
         )
     }
 

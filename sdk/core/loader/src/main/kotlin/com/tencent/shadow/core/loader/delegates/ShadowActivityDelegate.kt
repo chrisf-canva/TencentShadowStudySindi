@@ -21,7 +21,6 @@ package com.tencent.shadow.core.loader.delegates
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
-import android.content.Context.LAYOUT_INFLATER_SERVICE
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -30,9 +29,8 @@ import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.WindowManager
+import com.tencent.shadow.coding.java_build_config.BuildConfig
 import com.tencent.shadow.core.common.LoggerFactory
-import com.tencent.shadow.core.loader.BuildConfig
-import com.tencent.shadow.core.loader.infos.PluginActivityInfo
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_ACTIVITY_INFO_KEY
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_BUSINESS_NAME_KEY
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_CALLING_ACTIVITY_KEY
@@ -40,7 +38,9 @@ import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_CLA
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_EXTRAS_BUNDLE_KEY
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_LOADER_BUNDLE_KEY
 import com.tencent.shadow.core.loader.managers.ComponentManager.Companion.CM_PART_KEY
-import com.tencent.shadow.core.runtime.*
+import com.tencent.shadow.core.runtime.PluginActivity
+import com.tencent.shadow.core.runtime.PluginManifest
+import com.tencent.shadow.core.runtime.ShadowActivity
 import com.tencent.shadow.core.runtime.container.HostActivityDelegate
 import com.tencent.shadow.core.runtime.container.HostActivityDelegator
 
@@ -50,13 +50,14 @@ import com.tencent.shadow.core.runtime.container.HostActivityDelegator
  *
  * @author cubershi
  */
-class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDelegate(), HostActivityDelegate {
+open class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDelegate(),
+    HostActivityDelegate {
     companion object {
         const val PLUGIN_OUT_STATE_KEY = "PLUGIN_OUT_STATE_KEY"
         val mLogger = LoggerFactory.getLogger(ShadowActivityDelegate::class.java)
     }
 
-    private lateinit var mHostActivityDelegator: HostActivityDelegator
+    protected lateinit var mHostActivityDelegator: HostActivityDelegator
     private val mPluginActivity get() = super.pluginActivity
     private lateinit var mBusinessName: String
     private lateinit var mPartKey: String
@@ -65,12 +66,13 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
     private var mPluginActivityCreated = false
     private var mDependenciesInjected = false
     private var mRecreateCalled = false
+
     /**
      * 判断是否调用过OnWindowAttributesChanged，如果调用过就说明需要在onCreate之前调用
      */
     private var mCallOnWindowAttributesChanged = false
-    private var mBeforeOnCreateOnWindowAttributesChangedCalledParams: WindowManager.LayoutParams? = null
-    private lateinit var mMixResources: MixResources
+    private var mBeforeOnCreateOnWindowAttributesChangedCalledParams: WindowManager.LayoutParams? =
+        null
 
     override fun setDelegator(hostActivityDelegator: HostActivityDelegator) {
         mHostActivityDelegator = hostActivityDelegator
@@ -81,6 +83,7 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
     private lateinit var mCurrentConfiguration: Configuration
     private var mPluginHandleConfigurationChange: Int = 0
     private var mCallingActivity: ComponentName? = null
+    protected lateinit var mPluginActivityInfo: PluginManifest.ActivityInfo
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val pluginInitBundle = savedInstanceState ?: mHostActivityDelegator.intent.extras!!
@@ -92,21 +95,21 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
         mDI.inject(this, partKey)
         mDependenciesInjected = true
 
-        mMixResources = MixResources(mHostActivityDelegator.superGetResources(), mPluginResources)
-
         val bundleForPluginLoader = pluginInitBundle.getBundle(CM_LOADER_BUNDLE_KEY)!!
         mBundleForPluginLoader = bundleForPluginLoader
         bundleForPluginLoader.classLoader = this.javaClass.classLoader
         val pluginActivityClassName = bundleForPluginLoader.getString(CM_CLASS_NAME_KEY)!!
-        val pluginActivityInfo: PluginActivityInfo = bundleForPluginLoader.getParcelable(CM_ACTIVITY_INFO_KEY)!!
+        val pluginActivityInfo: PluginManifest.ActivityInfo =
+            bundleForPluginLoader.getParcelable(CM_ACTIVITY_INFO_KEY)!!
+        mPluginActivityInfo = pluginActivityInfo
 
         mCurrentConfiguration = Configuration(resources.configuration)
         mPluginHandleConfigurationChange =
-                (pluginActivityInfo.activityInfo!!.configChanges
-                        or ActivityInfo.CONFIG_SCREEN_SIZE//系统本身就会单独对待这个属性，不声明也不会重启Activity。
-                        or ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE//系统本身就会单独对待这个属性，不声明也不会重启Activity。
-                        or 0x20000000 //见ActivityInfo.CONFIG_WINDOW_CONFIGURATION 系统处理属性
-                        )
+            (pluginActivityInfo.configChanges
+                    or ActivityInfo.CONFIG_SCREEN_SIZE//系统本身就会单独对待这个属性，不声明也不会重启Activity。
+                    or ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE//系统本身就会单独对待这个属性，不声明也不会重启Activity。
+                    or 0x20000000 //见ActivityInfo.CONFIG_WINDOW_CONFIGURATION 系统处理属性
+                    )
         if (savedInstanceState == null) {
             mRawIntentExtraBundle = pluginInitBundle.getBundle(CM_EXTRAS_BUNDLE_KEY)
             mHostActivityDelegator.intent.replaceExtras(mRawIntentExtraBundle)
@@ -115,22 +118,26 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
 
         try {
             val pluginActivity = mAppComponentFactory.instantiateActivity(
-                    mPluginClassLoader,
-                    pluginActivityClassName,
-                    mHostActivityDelegator.intent
+                mPluginClassLoader,
+                pluginActivityClassName,
+                mHostActivityDelegator.intent
             )
             initPluginActivity(pluginActivity, pluginActivityInfo)
             super.pluginActivity = pluginActivity
 
             if (mLogger.isDebugEnabled) {
-                mLogger.debug("{} mPluginHandleConfigurationChange=={}", mPluginActivity.javaClass.canonicalName, mPluginHandleConfigurationChange)
+                mLogger.debug(
+                    "{} mPluginHandleConfigurationChange=={}",
+                    mPluginActivity.javaClass.canonicalName,
+                    mPluginHandleConfigurationChange
+                )
             }
 
             //使PluginActivity替代ContainerActivity接收Window的Callback
             mHostActivityDelegator.window.callback = pluginActivity
 
             //设置插件AndroidManifest.xml 中注册的WindowSoftInputMode
-            mHostActivityDelegator.window.setSoftInputMode(pluginActivityInfo.activityInfo.softInputMode)
+            mHostActivityDelegator.window.setSoftInputMode(pluginActivityInfo.softInputMode)
 
             //Activity.onCreate调用之前应该先收到onWindowAttributesChanged。
             if (mCallOnWindowAttributesChanged) {
@@ -153,7 +160,10 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
         }
     }
 
-    private fun initPluginActivity(pluginActivity: PluginActivity, pluginActivityInfo: PluginActivityInfo) {
+    private fun initPluginActivity(
+        pluginActivity: PluginActivity,
+        pluginActivityInfo: PluginManifest.ActivityInfo
+    ) {
         pluginActivity.setHostActivityDelegator(mHostActivityDelegator)
         pluginActivity.setPluginResources(mPluginResources)
         pluginActivity.setPluginClassLoader(mPluginClassLoader)
@@ -171,7 +181,13 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
         //有可能会执行业务Activity覆盖的逻辑。
         //所以，这个调用要放在最后。
         pluginActivity.setHostContextAsBase(mHostActivityDelegator.hostActivity as Context)
-        pluginActivity.setTheme(pluginActivityInfo.themeResource)
+
+        val activityTheme = if (pluginActivityInfo.theme != 0) {
+            pluginActivityInfo.theme
+        } else {
+            pluginActivity.applicationInfo.theme
+        }
+        pluginActivity.setTheme(activityTheme)
     }
 
     override fun getLoaderVersion() = BuildConfig.VERSION_NAME
@@ -206,7 +222,11 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
     override fun onConfigurationChanged(newConfig: Configuration) {
         val diff = newConfig.diff(mCurrentConfiguration)
         if (mLogger.isDebugEnabled) {
-            mLogger.debug("{} onConfigurationChanged diff=={}", mPluginActivity.javaClass.canonicalName, diff)
+            mLogger.debug(
+                "{} onConfigurationChanged diff=={}",
+                mPluginActivity.javaClass.canonicalName,
+                diff
+            )
         }
         if (diff == (diff and mPluginHandleConfigurationChange)) {
             mPluginActivity.onConfigurationChanged(newConfig)
@@ -247,14 +267,11 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
         return mPluginClassLoader
     }
 
-    override fun getLayoutInflater(): LayoutInflater {
-        val inflater = mHostActivityDelegator.applicationContext.getSystemService(LAYOUT_INFLATER_SERVICE) as LayoutInflater
-        return ShadowLayoutInflater.build(inflater, mPluginActivity, mPartKey)
-    }
+    override fun getLayoutInflater(): LayoutInflater = LayoutInflater.from(mPluginActivity)
 
     override fun getResources(): Resources {
         if (mDependenciesInjected) {
-            return mMixResources;
+            return mPluginResources;
         } else {
             //预期只有android.view.Window.getDefaultFeatures会调用到这个分支，此时我们还无法确定插件资源
             //而getDefaultFeatures只需要访问系统资源
@@ -271,7 +288,7 @@ class ShadowActivityDelegate(private val mDI: DI) : GeneratedShadowActivityDeleg
         pluginActivity: ShadowActivity,
         pluginSavedInstanceState: Bundle?
     ) {
-        ShadowActivityLifecycleCallbacks.Holder.notifyPluginActivityPreCreated(
+        mPluginApplication.mActivityLifecycleCallbacksHolder.notifyPluginActivityPreCreated(
             pluginActivity,
             pluginSavedInstanceState
         )

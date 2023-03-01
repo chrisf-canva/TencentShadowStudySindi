@@ -28,7 +28,7 @@ import com.tencent.shadow.core.runtime.container.PluginContainerActivity;
  * 1.模拟PhoneLayoutInflater的系统view构造过程
  * 2.将xml中的webview替换成shadowWebView
  */
-public class ShadowWebViewLayoutInflater extends FixedContextLayoutInflater{
+public class ShadowWebViewLayoutInflater extends FixedContextLayoutInflater {
 
     private static final String AndroidWebView = "android.webkit.WebView";
 
@@ -52,12 +52,12 @@ public class ShadowWebViewLayoutInflater extends FixedContextLayoutInflater{
     }
 
     @Override
-    Pair<String,String> changeViewNameAndPrefix(String prefix,String name) {
+    Pair<String, String> changeViewNameAndPrefix(String name, String prefix) {
         if (AndroidWebView.equals(prefix + name)) {
             prefix = ShadowPackagePrefix;
             name = ShadowWebView;
         }
-        return new Pair<>(name,prefix);
+        return new Pair<>(name, prefix);
     }
 
 

@@ -24,30 +24,82 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import com.tencent.shadow.core.loader.ShadowPluginLoader
 import com.tencent.shadow.core.loader.classloaders.PluginClassLoader
 import com.tencent.shadow.core.loader.delegates.ShadowDelegate
 import com.tencent.shadow.core.runtime.ShadowApplication
 import com.tencent.shadow.core.runtime.ShadowService
+import java.util.concurrent.CountDownLatch
 
 /**
  * 插件service管理类，负责插件框架内所有service启动，销毁，生命周期管理
  * Created by jaylanchen on 2018/11/29.
  */
 
-class PluginServiceManager(private val mPluginLoader: ShadowPluginLoader, private val mHostContext: Context) {
+class PluginServiceManager(mPluginLoader: ShadowPluginLoader, mHostContext: Context) {
+    private val delegate =
+        UnsafePluginServiceManager(mPluginLoader, mHostContext)
+    private val mainThreadHandler = Handler(Looper.getMainLooper())
+
+    private inline fun <reified T> execInMainThread(crossinline action: () -> T): T {
+        if (Thread.currentThread() === Looper.getMainLooper().thread) {
+            return action()
+        } else {
+            val countDownLatch = CountDownLatch(1)
+            val result = arrayOfNulls<T>(1)
+            mainThreadHandler.post {
+                result[0] = action()
+                countDownLatch.countDown()
+            }
+            countDownLatch.await()
+            return result[0] as T
+        }
+    }
+
+    fun startPluginService(service: Intent) =
+        execInMainThread {
+            delegate.startPluginService(service)
+        }
+
+    fun stopPluginService(intent: Intent) =
+        execInMainThread {
+            delegate.stopPluginService(intent)
+        }
+
+    fun bindPluginService(intent: Intent, conn: ServiceConnection, flags: Int) =
+        execInMainThread {
+            delegate.bindPluginService(intent, conn, flags)
+        }
+
+    fun unbindPluginService(conn: ServiceConnection) =
+        execInMainThread {
+            delegate.unbindPluginService(conn)
+        }
+}
+
+private open class UnsafePluginServiceManager(
+    private val mPluginLoader: ShadowPluginLoader,
+    private val mHostContext: Context
+) {
 
     // 保存service的binder
     private val mServiceBinderMap = HashMap<ComponentName, IBinder?>()
+
     // service对应ServiceConnection集合
     private val mServiceConnectionMap = HashMap<ComponentName, HashSet<ServiceConnection>>()
+
     // ServiceConnection与对应的Intent的集合
     private val mConnectionIntentMap = HashMap<ServiceConnection, Intent>()
+
     // 所有已启动的service集合
     private val mAliveServicesMap = HashMap<ComponentName, ShadowService>()
+
     // 通过startService启动起来的service集合
     private val mServiceStartByStartServiceSet = HashSet<ComponentName>()
+
     // 存在mAliveServicesMap中，且stopService已经调用的service集合
     private val mServiceStopCalledMap = HashSet<ComponentName>()
 
@@ -150,10 +202,12 @@ class PluginServiceManager(private val mPluginLoader: ShadowPluginLoader, privat
 
     }
 
-    fun unbindPluginService(connection: ServiceConnection) {
-
+    fun unbindPluginService(connection: ServiceConnection): Pair<Boolean, Boolean> {
+        var isPluginService = false
+        var isPluginServiceStopped = false
         for ((componentName, connSet) in mServiceConnectionMap) {
             if (connSet.contains(connection)) {
+                isPluginService = true
                 connSet.remove(connection)
                 val intent = mConnectionIntentMap.remove(connection)
 
@@ -166,14 +220,15 @@ class PluginServiceManager(private val mPluginLoader: ShadowPluginLoader, privat
                 }
 
                 // 结束该service
-                destroyServiceIfNeed(componentName)
+                isPluginServiceStopped = destroyServiceIfNeed(componentName)
+
+                connection.onServiceDisconnected(componentName)
 
                 break
             }
         }
-
+        return Pair(isPluginService, isPluginServiceStopped)
     }
-
 
 
     fun onConfigurationChanged(newConfig: Configuration?) {
@@ -228,7 +283,7 @@ class PluginServiceManager(private val mPluginLoader: ShadowPluginLoader, privat
         val tmpShadowDelegate = TmpShadowDelegate()
         mPluginLoader.inject(tmpShadowDelegate, partKey!!)
         val service = tmpShadowDelegate.getAppComponentFactory()
-                .instantiateService(tmpShadowDelegate.getPluginClassLoader(), className, intent)
+            .instantiateService(tmpShadowDelegate.getPluginClassLoader(), className, intent)
 
         service.setPluginResources(tmpShadowDelegate.getPluginResources())
         service.setPluginClassLoader(tmpShadowDelegate.getPluginClassLoader())
@@ -266,7 +321,10 @@ class PluginServiceManager(private val mPluginLoader: ShadowPluginLoader, privat
             }
         } else {
             // 如果该service，有通过startService,则必须调用过stopService且没有bind了，才能销毁
-            if (mServiceStopCalledMap.contains(service) && !mServiceConnectionMap.containsKey(service)) {
+            if (mServiceStopCalledMap.contains(service) && !mServiceConnectionMap.containsKey(
+                    service
+                )
+            ) {
                 // 结束该service
                 destroy()
                 return true

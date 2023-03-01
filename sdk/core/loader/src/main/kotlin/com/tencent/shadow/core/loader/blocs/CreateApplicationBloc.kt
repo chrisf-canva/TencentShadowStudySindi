@@ -21,10 +21,11 @@ package com.tencent.shadow.core.loader.blocs
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.res.Resources
+import com.tencent.shadow.core.load_parameters.LoadParameters
 import com.tencent.shadow.core.loader.classloaders.PluginClassLoader
 import com.tencent.shadow.core.loader.exceptions.CreateApplicationException
-import com.tencent.shadow.core.loader.infos.PluginInfo
 import com.tencent.shadow.core.loader.managers.ComponentManager
+import com.tencent.shadow.core.runtime.PluginManifest
 import com.tencent.shadow.core.runtime.ShadowAppComponentFactory
 import com.tencent.shadow.core.runtime.ShadowApplication
 
@@ -36,31 +37,34 @@ import com.tencent.shadow.core.runtime.ShadowApplication
 object CreateApplicationBloc {
     @Throws(CreateApplicationException::class)
     fun createShadowApplication(
-            pluginClassLoader: PluginClassLoader,
-            pluginInfo: PluginInfo,
-            resources: Resources,
-            hostAppContext: Context,
-            componentManager: ComponentManager,
-            applicationInfo: ApplicationInfo,
-            appComponentFactory: ShadowAppComponentFactory
+        pluginClassLoader: PluginClassLoader,
+        loadParameters: LoadParameters,
+        pluginManifest: PluginManifest,
+        resources: Resources,
+        hostAppContext: Context,
+        componentManager: ComponentManager,
+        pluginApplicationInfo: ApplicationInfo,
+        appComponentFactory: ShadowAppComponentFactory
     ): ShadowApplication {
         try {
-            val appClassName = pluginInfo.applicationClassName
-                    ?: ShadowApplication::class.java.name
-            val shadowApplication = appComponentFactory.instantiateApplication(pluginClassLoader, appClassName)
-            val partKey = pluginInfo.partKey
+            val appClassName = pluginManifest.applicationClassName
+                ?: ShadowApplication::class.java.name
+            val shadowApplication =
+                appComponentFactory.instantiateApplication(pluginClassLoader, appClassName)
+            val partKey = loadParameters.partKey
             shadowApplication.setPluginResources(resources)
             shadowApplication.setPluginClassLoader(pluginClassLoader)
             shadowApplication.setPluginComponentLauncher(componentManager)
-            shadowApplication.setBroadcasts(componentManager.getBroadcastsByPartKey(partKey))
+            shadowApplication.setBroadcasts(pluginManifest.receivers)
             shadowApplication.setAppComponentFactory(appComponentFactory)
-            shadowApplication.applicationInfo = applicationInfo
-            shadowApplication.setBusinessName(pluginInfo.businessName)
+            shadowApplication.applicationInfo = pluginApplicationInfo
+            shadowApplication.setBusinessName(loadParameters.businessName)
             shadowApplication.setPluginPartKey(partKey)
+            shadowApplication.setShadowApplication(shadowApplication)
 
             //和ShadowActivityDelegate.initPluginActivity一样，attachBaseContext放到最后
             shadowApplication.setHostApplicationContextAsBase(hostAppContext)
-            shadowApplication.setTheme(applicationInfo.theme)
+            shadowApplication.setTheme(pluginManifest.applicationTheme)
             return shadowApplication
         } catch (e: Exception) {
             throw CreateApplicationException(e)

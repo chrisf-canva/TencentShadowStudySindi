@@ -55,10 +55,10 @@ open class PackagePluginExtension {
     }
 
     fun toJson(
-            project: Project,
-            loaderApkName: String,
-            runtimeApkName: String,
-            buildType: PluginBuildType
+        project: Project,
+        loaderApkName: String,
+        runtimeApkName: String,
+        buildType: PluginBuildType
     ): JSONObject {
         val json = JSONObject()
 
@@ -88,8 +88,9 @@ open class PackagePluginExtension {
             val pluginObj = JSONObject()
             pluginObj["businessName"] = i.businessName
             pluginObj["partKey"] = i.partKey
-            pluginObj["apkName"] = i.apkName
-            pluginObj["hash"] = ShadowPluginHelper.getFileMD5(ShadowPluginHelper.getPluginFile(project, i, true))
+            pluginObj["apkName"] = File(i.apkPath).name
+            pluginObj["hash"] =
+                ShadowPluginHelper.getFileMD5(ShadowPluginHelper.getPluginFile(project, i, true))
             if (i.dependsOn.isNotEmpty()) {
                 val dependsOnJson = JSONArray()
                 for (k in i.dependsOn) {
@@ -123,15 +124,15 @@ open class PackagePluginExtension {
         when {
             uuidFile.exists() -> {
                 json["UUID"] = uuidFile.readText()
-                println("uuid = " + json["UUID"] + " 由文件生成")
+                project.logger.info("uuid = " + json["UUID"] + " 由文件生成")
             }
             this.uuid.isEmpty() -> {
                 json["UUID"] = UUID.randomUUID().toString().toUpperCase()
-                println("uuid = " + json["UUID"] + " 随机生成")
+                project.logger.info("uuid = " + json["UUID"] + " 随机生成")
             }
             else -> {
                 json["UUID"] = this.uuid
-                println("uuid = " + json["UUID"] + " 由配置生成")
+                project.logger.info("uuid = " + json["UUID"] + " 由配置生成")
             }
         }
 

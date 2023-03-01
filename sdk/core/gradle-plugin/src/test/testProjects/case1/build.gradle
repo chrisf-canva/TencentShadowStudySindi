@@ -1,11 +1,11 @@
 buildscript {
-    ext.build_gradle_version = '4.0.2'
+    ext.build_gradle_version = '7.0.3'
     repositories {
         if (!System.getenv().containsKey("DISABLE_TENCENT_MAVEN_MIRROR")) {
             maven { url 'https://mirrors.tencent.com/nexus/repository/maven-public/' }
         } else {
             google()
-            jcenter()
+            mavenCentral()
         }
     }
     dependencies {
@@ -28,7 +28,7 @@ allprojects {
             maven { url 'https://mirrors.tencent.com/nexus/repository/maven-public/' }
         } else {
             google()
-            jcenter()
+            mavenCentral()
         }
     }
 }

@@ -26,18 +26,21 @@ import java.io.File
 import java.io.OutputStream
 import java.util.zip.ZipInputStream
 
-open class JavassistTransform(project: Project, val classPoolBuilder: ClassPoolBuilder) : ClassTransform(project) {
+open class JavassistTransform(project: Project, val classPoolBuilder: ClassPoolBuilder) :
+    ClassTransform(project) {
     val mCtClassInputMap = mutableMapOf<CtClass, InputClass>()
     lateinit var classPool: ClassPool
 
-    override fun onOutputClass(className: String, outputStream: OutputStream) {
+    override fun onOutputClass(entryName: String?, className: String, outputStream: OutputStream) {
         classPool[className].writeOut(outputStream)
     }
 
     override fun DirInputClass.onInputClass(classFile: File, outputFile: File) {
-        val ctClass: CtClass = classPool.makeClass(classFile.inputStream())
-        addOutput(ctClass.name, outputFile)
-        mCtClassInputMap[ctClass] = this
+        classFile.inputStream().use {
+            val ctClass: CtClass = classPool.makeClass(it)
+            addOutput(ctClass.name, outputFile)
+            mCtClassInputMap[ctClass] = this
+        }
     }
 
     override fun JarInputClass.onInputClass(zipInputStream: ZipInputStream, entryName: String) {

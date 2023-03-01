@@ -23,10 +23,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.util.Pair
-import com.tencent.shadow.core.loader.BuildConfig
+import com.tencent.shadow.coding.java_build_config.BuildConfig
+import com.tencent.shadow.core.load_parameters.LoadParameters
 import com.tencent.shadow.core.loader.infos.ContainerProviderInfo
-import com.tencent.shadow.core.loader.infos.PluginComponentInfo
-import com.tencent.shadow.core.loader.infos.PluginInfo
+import com.tencent.shadow.core.runtime.PluginManifest
 import com.tencent.shadow.core.runtime.ShadowContext
 import com.tencent.shadow.core.runtime.ShadowContext.PluginComponentLauncher
 import com.tencent.shadow.core.runtime.container.DelegateProvider.LOADER_VERSION_KEY
@@ -60,9 +60,11 @@ abstract class ComponentManager : PluginComponentLauncher {
 
     abstract fun onBindContainerContentProvider(pluginContentProvider: ComponentName): ContainerProviderInfo
 
-    abstract fun getBroadcastInfoList(partKey: String): List<BroadcastInfo>?
-
-    override fun startActivity(shadowContext: ShadowContext, pluginIntent: Intent, option: Bundle?): Boolean {
+    override fun startActivity(
+        shadowContext: ShadowContext,
+        pluginIntent: Intent,
+        option: Bundle?
+    ): Boolean {
         return if (pluginIntent.isPluginComponent()) {
             shadowContext.superStartActivity(pluginIntent.toActivityContainerIntent(), option)
             true
@@ -72,10 +74,16 @@ abstract class ComponentManager : PluginComponentLauncher {
     }
 
 
-    override fun startActivityForResult(delegator: GeneratedHostActivityDelegator, pluginIntent: Intent, requestCode: Int, option: Bundle?, callingActivity: ComponentName): Boolean {
+    override fun startActivityForResult(
+        delegator: GeneratedHostActivityDelegator,
+        pluginIntent: Intent,
+        requestCode: Int,
+        option: Bundle?,
+        callingActivity: ComponentName
+    ): Boolean {
         return if (pluginIntent.isPluginComponent()) {
             val containerIntent = pluginIntent.toActivityContainerIntent()
-            containerIntent.putExtra(CM_CALLING_ACTIVITY_KEY,callingActivity)
+            containerIntent.putExtra(CM_CALLING_ACTIVITY_KEY, callingActivity)
             delegator.startActivityForResult(containerIntent, requestCode, option)
             true
         } else {
@@ -83,7 +91,10 @@ abstract class ComponentManager : PluginComponentLauncher {
         }
     }
 
-    override fun startService(context: ShadowContext, service: Intent): Pair<Boolean, ComponentName?> {
+    override fun startService(
+        context: ShadowContext,
+        service: Intent
+    ): Pair<Boolean, ComponentName?> {
         if (service.isPluginComponent()) {
             // 插件service intent不需要转换成container service intent，直接使用intent
             val component = mPluginServiceManager!!.startPluginService(service)
@@ -107,7 +118,12 @@ abstract class ComponentManager : PluginComponentLauncher {
         return Pair(false, true)
     }
 
-    override fun bindService(context: ShadowContext, intent: Intent, conn: ServiceConnection, flags: Int): Pair<Boolean, Boolean> {
+    override fun bindService(
+        context: ShadowContext,
+        intent: Intent,
+        conn: ServiceConnection,
+        flags: Int
+    ): Pair<Boolean, Boolean> {
         return if (intent.isPluginComponent()) {
             // 插件service intent不需要转换成container service intent，直接使用intent
             mPluginServiceManager!!.bindPluginService(intent, conn, flags)
@@ -119,9 +135,14 @@ abstract class ComponentManager : PluginComponentLauncher {
 
     }
 
-    override fun unbindService(context: ShadowContext, conn: ServiceConnection): Pair<Boolean, Unit> {
-        mPluginServiceManager!!.unbindPluginService(conn)
-        return Pair(true, Unit)
+    override fun unbindService(
+        context: ShadowContext,
+        conn: ServiceConnection
+    ): Pair<Boolean, Unit> {
+        return Pair.create(
+            mPluginServiceManager!!.unbindPluginService(conn).first,
+            Unit
+        )
     }
 
     override fun convertPluginActivityIntent(pluginIntent: Intent): Intent {
@@ -146,61 +167,81 @@ abstract class ComponentManager : PluginComponentLauncher {
 
     /**
      * key:插件ComponentName
-     * value:PluginInfo
+     * value:LoadParameters
      */
-    private val pluginInfoMap: MutableMap<ComponentName, PluginInfo> = hashMapOf()
+    private val loadParametersMap: MutableMap<ComponentName, LoadParameters> = hashMapOf()
 
     /**
      * key:插件ComponentName
-     * value:PluginComponentInfo
+     * value:PluginManifest.ActivityInfo
      */
-    private val pluginComponentInfoMap: MutableMap<ComponentName, PluginComponentInfo> = hashMapOf()
+    private val pluginActivityInfoMap: MutableMap<ComponentName, PluginManifest.ActivityInfo> =
+        hashMapOf()
 
+    /**
+     * 保存所有已加载插件对PluginManifest和apk文件路径对应关系
+     * 用于在同一个Loader加载对多个插件之间相互查找组件
+     */
+    private val allLoadedPlugin: MutableList<kotlin.Pair<PluginManifest, String>> = mutableListOf()
 
-    private var application2broadcastInfo: MutableMap<String, MutableMap<String, List<String>>> = HashMap()
-
-    fun addPluginApkInfo(pluginInfo: PluginInfo) {
-        fun common(pluginComponentInfo: PluginComponentInfo,componentName:ComponentName) {
-            packageNameMap[pluginComponentInfo.className!!] = pluginInfo.packageName
-            val previousValue = pluginInfoMap.put(componentName, pluginInfo)
+    fun addPluginApkInfo(
+        pluginManifest: PluginManifest,
+        loadParameters: LoadParameters,
+        archiveFilePath: String
+    ) {
+        fun common(componentInfo: PluginManifest.ComponentInfo, componentName: ComponentName) {
+            packageNameMap[componentInfo.className] = componentName.packageName
+            val previousValue = loadParametersMap.put(componentName, loadParameters)
             if (previousValue != null) {
                 throw IllegalStateException("重复添加Component：$componentName")
             }
-            pluginComponentInfoMap[componentName] = pluginComponentInfo
         }
 
-        pluginInfo.mActivities.forEach {
-            val componentName = ComponentName(pluginInfo.packageName, it.className!!)
-            common(it,componentName)
+        val applicationPackageName = pluginManifest.applicationPackageName
+        pluginManifest.activities?.forEach {
+            val componentName = ComponentName(applicationPackageName, it.className)
+            common(it, componentName)
             componentMap[componentName] = onBindContainerActivity(componentName)
+            pluginActivityInfoMap[componentName] = it
         }
 
-        pluginInfo.mServices.forEach {
-            val componentName = ComponentName(pluginInfo.packageName, it.className!!)
-            common(it,componentName)
+        pluginManifest.services?.forEach {
+            val componentName = ComponentName(applicationPackageName, it.className)
+            common(it, componentName)
         }
 
-        pluginInfo.mProviders.forEach {
-            val componentName = ComponentName(pluginInfo.packageName, it.className!!)
-            mPluginContentProviderManager!!.addContentProviderInfo(pluginInfo.partKey,it,onBindContainerContentProvider(componentName))
+        pluginManifest.providers?.forEach {
+            val componentName = ComponentName(applicationPackageName, it.className)
+            mPluginContentProviderManager!!.addContentProviderInfo(
+                loadParameters.partKey,
+                it,
+                onBindContainerContentProvider(componentName)
+            )
         }
+
+        pluginManifest.receivers?.forEach {
+            val componentName = ComponentName(applicationPackageName, it.className)
+            common(it, componentName)
+        }
+
+        allLoadedPlugin.add(pluginManifest to archiveFilePath)
     }
 
     fun getComponentBusinessName(componentName: ComponentName): String? {
-        return pluginInfoMap[componentName]?.businessName
+        return loadParametersMap[componentName]?.businessName
     }
 
-    fun getComponentPartKey(componentName: ComponentName) : String? {
-        return pluginInfoMap[componentName]?.partKey
+    fun getComponentPartKey(componentName: ComponentName): String? {
+        return loadParametersMap[componentName]?.partKey
     }
 
-    private var mPluginServiceManager : PluginServiceManager? = null
-    fun setPluginServiceManager(pluginServiceManager : PluginServiceManager) {
+    private var mPluginServiceManager: PluginServiceManager? = null
+    fun setPluginServiceManager(pluginServiceManager: PluginServiceManager) {
         mPluginServiceManager = pluginServiceManager
     }
 
-    private var mPluginContentProviderManager : PluginContentProviderManager? = null
-    fun setPluginContentProviderManager(pluginContentProviderManager : PluginContentProviderManager) {
+    private var mPluginContentProviderManager: PluginContentProviderManager? = null
+    fun setPluginContentProviderManager(pluginContentProviderManager: PluginContentProviderManager) {
         mPluginContentProviderManager = pluginContentProviderManager
     }
 
@@ -215,8 +256,8 @@ abstract class ComponentManager : PluginComponentLauncher {
      */
     private fun Intent.toActivityContainerIntent(): Intent {
         val bundleForPluginLoader = Bundle()
-        val pluginComponentInfo = pluginComponentInfoMap[component]!!
-        bundleForPluginLoader.putParcelable(CM_ACTIVITY_INFO_KEY, pluginComponentInfo)
+        val pluginActivityInfo = pluginActivityInfoMap[component]!!
+        bundleForPluginLoader.putParcelable(CM_ACTIVITY_INFO_KEY, pluginActivityInfo)
         return toContainerIntent(bundleForPluginLoader)
     }
 
@@ -226,17 +267,24 @@ abstract class ComponentManager : PluginComponentLauncher {
      * 调用前必须先调用isPluginComponent判断Intent确实一个插件内的组件
      */
     private fun Intent.toContainerIntent(bundleForPluginLoader: Bundle): Intent {
-        val component = this.component!!
+        val component = this.component
+            ?: throw IllegalArgumentException("Activity Intent必须指定ComponentName")
         val className = component.className
-        val packageName = packageNameMap[className]!!
+
+        val packageName = packageNameMap[className]
+            ?: throw IllegalArgumentException("已加载的插件中找不到${className}对应的packageName")
         this.component = ComponentName(packageName, className)
-        val containerComponent = componentMap[component]!!
-        val businessName = pluginInfoMap[component]!!.businessName
-        val partKey = pluginInfoMap[component]!!.partKey
+
+        val loadParameters = loadParametersMap[component]
+            ?: throw IllegalArgumentException("已加载的插件中找不到${component}对应的LoadParameters")
+        val businessName = loadParameters.businessName
+        val partKey = loadParameters.partKey
 
         val pluginExtras: Bundle? = extras
         replaceExtras(null as Bundle?)
 
+        val containerComponent = componentMap[component]
+            ?: throw IllegalArgumentException("已加载的插件中找不到${component}对应的ContainerActivity")
         val containerIntent = Intent(this)
         containerIntent.component = containerComponent
 
@@ -252,21 +300,57 @@ abstract class ComponentManager : PluginComponentLauncher {
         return containerIntent
     }
 
+    fun getArchiveFilePathForActivity(className: String) =
+        getArchiveFilePath(className, PluginManifest::getActivities)
 
-    class BroadcastInfo(val className: String, val actions: Array<String>)
+    fun getArchiveFilePathForService(className: String) =
+        getArchiveFilePath(className, PluginManifest::getServices)
 
-    fun getBroadcastsByPartKey(partKey: String): MutableMap<String, List<String>> {
-        if (application2broadcastInfo[partKey] == null) {
-            application2broadcastInfo[partKey] = HashMap()
-            val broadcastInfoList = getBroadcastInfoList(partKey)
-            if (broadcastInfoList != null) {
-                for (broadcastInfo in broadcastInfoList) {
-                    application2broadcastInfo[partKey]!![broadcastInfo.className] =
-                            broadcastInfo.actions.toList()
+    fun getArchiveFilePathForProviderByAction(action: String?): kotlin.Pair<String?, String?> {
+        for ((pluginManifest, archiveFilePath) in allLoadedPlugin) {
+            val providers = pluginManifest.providers
+            if (providers != null) {
+                for (provider in providers) {
+                    if (action?.equals(provider.authorities) == true) {
+                        return provider.className to archiveFilePath
+                    }
                 }
             }
         }
-        return application2broadcastInfo[partKey]!!
+        return null to null
+    }
+
+    fun getArchiveFilePathForProviderByClassName(className: String): kotlin.Pair<String?, String?> {
+        for ((pluginManifest, archiveFilePath) in allLoadedPlugin) {
+            val providers = pluginManifest.providers
+            if (providers != null) {
+                for (provider in providers) {
+                    if (className == provider.className) {
+                        return provider.className to archiveFilePath
+                    }
+                }
+            }
+        }
+        return null to null
+    }
+
+    fun getAllArchiveFilePaths() = allLoadedPlugin.map { it.second }.toList()
+
+    private fun getArchiveFilePath(
+        className: String,
+        getComponents: (PluginManifest) -> Array<out PluginManifest.ComponentInfo>?
+    ): String? {
+        for ((pluginManifest, archiveFilePath) in allLoadedPlugin) {
+            val components = getComponents(pluginManifest)
+            if (components != null) {
+                for (component in components) {
+                    if (component.className == className) {
+                        return archiveFilePath
+                    }
+                }
+            }
+        }
+        return null
     }
 
 }

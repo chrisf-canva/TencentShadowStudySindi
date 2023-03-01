@@ -43,16 +43,6 @@ abstract class SpecificTransform {
         methodInfo.descriptor = other.methodInfo.descriptor
     }
 
-    /**
-     * 过滤引用了某些类型的类
-     */
-    fun filterRefClasses(allAppClass: Set<CtClass>, targetClassList: List<String>) =
-            allAppClass.filter { ctClass ->
-                targetClassList.any { targetClass ->
-                    ctClass.refClasses.contains(targetClass)
-                }
-            }.toSet()
-
     fun CtClass.isClassOf(className: String): Boolean {
         var tmp: CtClass? = this
         do {
@@ -82,11 +72,22 @@ abstract class SpecificTransform {
                     val pos = iterator.next()
                     val c = iterator.byteAt(pos)
                     if (c == Opcode.INVOKEINTERFACE || c == Opcode.INVOKESPECIAL
-                            || c == Opcode.INVOKESTATIC || c == Opcode.INVOKEVIRTUAL) {
+                        || c == Opcode.INVOKESTATIC || c == Opcode.INVOKEVIRTUAL
+                    ) {
                         val index = iterator.u16bitAt(pos + 1)
-                        val cname = constPool.eqMember(ctMethod.name, ctMethod.methodInfo2.descriptor, index)
+                        val cname = constPool.eqMember(
+                            ctMethod.name,
+                            ctMethod.methodInfo2.descriptor,
+                            index
+                        )
                         val className = ctMethod.declaringClass.name
-                        val matched = cname != null && matchClass(ctMethod.name, ctMethod.methodInfo.descriptor, className, cname, clazz.classPool)
+                        val matched = cname != null && matchClass(
+                            ctMethod.name,
+                            ctMethod.methodInfo.descriptor,
+                            className,
+                            cname,
+                            clazz.classPool
+                        )
                         if (matched) {
                             return true
                         }
@@ -97,7 +98,13 @@ abstract class SpecificTransform {
         return false
     }
 
-    private fun matchClass(methodName: String, methodDescriptor: String, classname: String, name: String, pool: ClassPool): Boolean {
+    private fun matchClass(
+        methodName: String,
+        methodDescriptor: String,
+        classname: String,
+        name: String,
+        pool: ClassPool
+    ): Boolean {
         if (classname == name)
             return true
 
@@ -118,5 +125,17 @@ abstract class SpecificTransform {
         }
 
         return false
+    }
+
+    companion object {
+        /**
+         * 过滤引用了某些类型的类
+         */
+        fun filterRefClasses(allAppClass: Set<CtClass>, targetClassList: List<String>) =
+            allAppClass.filter { ctClass ->
+                targetClassList.any { targetClass ->
+                    ctClass.refClasses.contains(targetClass)
+                }
+            }.toSet()
     }
 }

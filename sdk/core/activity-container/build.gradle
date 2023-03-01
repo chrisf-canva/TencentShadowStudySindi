@@ -1,50 +1,32 @@
-apply plugin: 'com.android.library'
+import com.tencent.shadow.coding.code_generator.ActivityCodeGenerator
 
-group 'com.tencent.shadow.core'
-
-android {
-    compileSdkVersion project.COMPILE_SDK_VERSION
-
-    defaultConfig {
-        minSdkVersion project.MIN_SDK_VERSION
-        targetSdkVersion project.TARGET_SDK_VERSION
-        versionCode project.VERSION_CODE
-        versionName project.VERSION_NAME
-
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
-
+buildscript {
+    dependencies {
+        classpath 'com.tencent.shadow.coding:android-jar'
+        classpath 'com.tencent.shadow.coding:code-generator'
     }
+}
 
+apply plugin: 'com.tencent.shadow.internal.common-jar-settings'
+
+java {
     sourceSets {
-        main.java.srcDirs += project(':generate-delegate-code').buildDir.path + '/generated/DelegateCode/activity_container'
+        main.java.srcDirs += 'build/generated/sources/code-generator'
     }
 }
 
-dependencies{
-    implementation 'com.tencent.shadow.coding:lint'
-}
-
-def jarPackage(buildType) {
-    return tasks.create("jar${buildType.capitalize()}Package", Copy) {
-        def aarFile = file(project.buildDir.path + "/outputs/aar/${project.name}-${buildType}.aar")
-        def outputDir = file(project.buildDir.path + "/outputs/jar")
-
-        from zipTree(aarFile)
-        into outputDir
-        include 'classes.jar'
-        rename 'classes.jar', "${project.name}-${buildType}.jar"
-        group = 'build'
-        description = '生成jar包'
-    }.dependsOn(project.getTasksByName("assemble${buildType.capitalize()}", false).first())
-}
-
-afterEvaluate {
-    android {
-        buildTypes.findAll().each { buildType ->
-            def buildTypeName = buildType.getName()
-            jarPackage(buildTypeName)
-        }
+def generateCode = tasks.register('generateCode') {
+    def outputDir = layout.buildDirectory.dir('generated/sources/code-generator')
+    outputs.dir(outputDir)
+            .withPropertyName('outputDir')
+    doLast {
+        ActivityCodeGenerator codeGenerator = new ActivityCodeGenerator()
+        codeGenerator.generate(outputDir.get().getAsFile(), "activity_container")
     }
 }
 
-preBuild.dependsOn(project(":generate-delegate-code").getTasksByName("generateDelegateCode", false).first())
+compileJava.dependsOn(generateCode)
+
+dependencies {
+    implementation 'com.tencent.shadow.coding:java-build-config'
+}

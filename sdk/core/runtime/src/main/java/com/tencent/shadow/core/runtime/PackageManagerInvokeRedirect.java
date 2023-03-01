@@ -27,6 +27,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
+import android.content.pm.ServiceInfo;
 import android.content.pm.VersionedPackage;
 import android.os.Build;
 
@@ -39,7 +40,7 @@ import java.util.List;
  */
 public class PackageManagerInvokeRedirect {
 
-    private static PluginPackageManager getPluginPackageManager(ClassLoader classLoaderOfInvokeCode) {
+    public static PluginPackageManager getPluginPackageManager(ClassLoader classLoaderOfInvokeCode) {
         return PluginPartInfoManager.getPluginInfo(classLoaderOfInvokeCode).packageManager;
     }
 
@@ -49,6 +50,14 @@ public class PackageManagerInvokeRedirect {
 
     public static ActivityInfo getActivityInfo(ClassLoader classLoaderOfInvokeCode, ComponentName component, int flags) throws PackageManager.NameNotFoundException {
         return getPluginPackageManager(classLoaderOfInvokeCode).getActivityInfo(component, flags);
+    }
+
+    public static ServiceInfo getServiceInfo(ClassLoader classLoaderOfInvokeCode, ComponentName component, int flags) throws PackageManager.NameNotFoundException {
+        return getPluginPackageManager(classLoaderOfInvokeCode).getServiceInfo(component, flags);
+    }
+
+    public static ProviderInfo getProviderInfo(ClassLoader classLoaderOfInvokeCode, ComponentName component, int flags) throws PackageManager.NameNotFoundException {
+        return getPluginPackageManager(classLoaderOfInvokeCode).getProviderInfo(component, flags);
     }
 
     public static PackageInfo getPackageInfo(ClassLoader classLoaderOfInvokeCode, String packageName, int flags) throws PackageManager.NameNotFoundException {
@@ -71,6 +80,10 @@ public class PackageManagerInvokeRedirect {
 
     public static ResolveInfo resolveActivity(ClassLoader classLoaderOfInvokeCode, Intent intent, int flags) {
         return getPluginPackageManager(classLoaderOfInvokeCode).resolveActivity(intent, flags);
+    }
+
+    public static ResolveInfo resolveService(ClassLoader classLoaderOfInvokeCode, Intent intent, int flags) {
+        return getPluginPackageManager(classLoaderOfInvokeCode).resolveService(intent, flags);
     }
 
 }
